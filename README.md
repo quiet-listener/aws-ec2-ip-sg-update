@@ -1,5 +1,5 @@
 # aws-ec2-samples
-Code Forked from `aws-samples/aws-cloudfront-samples` and changed to automatically update EC2 IP ranges change and also workaround for security group ingress ruless limit. 
+Code Forked from `aws-samples/aws-cloudfront-samples` and changed to automatically update EC2 IP ranges change and also workaround for security group ingress rules limit. 
 For more detail read README.md inside folder update_security_groups_lambda.s
 ## update_security_groups_lambda
 
