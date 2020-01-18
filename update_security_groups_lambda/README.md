@@ -2,17 +2,17 @@
 
 ## update-security-groups
 
-A Lambda function for updating the **cloudfront** EC2 security group ingress rules
-with the CloudFront IP range changes.
+A Lambda function for updating the **EC2**  security group ingress rules
+with the EC2 IP range changes.
 
 
 ## Security Group
 
-This Lambda function updates a total possibility of 4 EC2 security groups tagged as the following:
-*  `Name: cloudfront_g` and `AutoUpdate: true` and a `Protocol` tag with value `http` or `https`.
-*  `Name: cloudfront_r` and `AutoUpdate: true` and a `Protocol` tag with value `http` or `https`.
-
-**Note:** For CloudFront to properly connect to your origin over HTTP or HTTPS only, you will need two security groups with `Name: cloudfront_g` and `Name: cloudfront_r` set for http or https depending on the protocol used. If you require both HTTP and HTTPS protocols to your origin, you will need a total of 4 security groups.
+This Lambda function updates EC2 security groups tagged as the following:
+*  `Name: EC2_g` and `AutoUpdate: true` and a `Protocol` tag with value `http` or `https`.
+*  `Name: EC2_r` and `AutoUpdate: true` and a `Protocol` tag with value `http` or `https`.
+with all ip ranges.  
+**NOTE** Make sure you have required number of sg to update all ip ranges else upgrade number of ingress rules limit from aws and update `split_amount` variable (line 106).
 
 ## Event Source
 
