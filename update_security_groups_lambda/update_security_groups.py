@@ -1,16 +1,3 @@
-'''
-Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-
-
-Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with the License. A copy of the License is located at
-
-
-    http://aws.amazon.com/apache2.0/
-
-
-or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-'''
-
 import boto3
 from distutils.util import strtobool
 import hashlib
@@ -23,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 # Name of the service, as seen in the ip-groups.json file, to extract information for
-SERVICE = "CLOUDFRONT"
+SERVICE = "EC2"
 # Ports your application uses that need inbound permissions from the service for
 INGRESS_PORTS = { 'Http': 80, 'Https': 443 }
 # Tags which identify the security groups you want to update
@@ -32,10 +19,11 @@ TAGS = {
     'AutoUpdate': os.environ.get('TagAutoUpdate', 'AutoUpdate'),
     'Protocol': os.environ.get('TagProtocol', 'Protocol')
 }
-SECURITY_GROUP_TAG_FOR_GLOBAL_HTTP = { TAGS['Name']: 'cloudfront_g', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'http' }
-SECURITY_GROUP_TAG_FOR_GLOBAL_HTTPS = { TAGS['Name']: 'cloudfront_g', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'https' }
-SECURITY_GROUP_TAG_FOR_REGION_HTTP = { TAGS['Name']: 'cloudfront_r', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'http' }
-SECURITY_GROUP_TAG_FOR_REGION_HTTPS = { TAGS['Name']: 'cloudfront_r', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'https' }
+
+SECURITY_GROUP_TAG_FOR_GLOBAL_HTTP = { TAGS['Name']: 'EC2_g', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'http' }
+SECURITY_GROUP_TAG_FOR_GLOBAL_HTTPS = { TAGS['Name']: 'EC2_g', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'https' }
+SECURITY_GROUP_TAG_FOR_REGION_HTTP = { TAGS['Name']: 'EC2_r', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'http' }
+SECURITY_GROUP_TAG_FOR_REGION_HTTPS = { TAGS['Name']: 'EC2_r', TAGS['AutoUpdate']: 'true', TAGS['Protocol']: 'https' }
 
 
 logger.setLevel(logging.INFO)
@@ -92,6 +80,11 @@ def get_ranges_for_service(ranges, service, subset):
     return service_ranges
 
 
+def split_ranges(new_ranges, split_amount):
+    total_len = len(new_ranges)
+    for index in range(0, total_len, split_amount):
+        yield new_ranges[index:index+split_amount]
+
 def update_security_groups(new_ranges):
     client = boto3.client('ec2')
 
@@ -100,38 +93,42 @@ def update_security_groups(new_ranges):
     region_http_group = get_security_groups_for_update(client, SECURITY_GROUP_TAG_FOR_REGION_HTTP)
     region_https_group = get_security_groups_for_update(client, SECURITY_GROUP_TAG_FOR_REGION_HTTPS)
 
-    logger.info('Found ' + str(len(global_http_group)) + ' CloudFront_g HttpSecurityGroups to update')
-    logger.info('Found ' + str(len(global_https_group)) + ' CloudFront_g HttpsSecurityGroups to update')
-    logger.info('Found ' + str(len(region_http_group)) + ' CloudFront_r HttpSecurityGroups to update')
-    logger.info('Found ' + str(len(region_https_group)) + ' CloudFront_r HttpsSecurityGroups to update')
+    logger.info('Found ' + str(len(global_http_group)) + ' EC2_g HttpSecurityGroups to update')
+    logger.info('Found ' + str(len(global_https_group)) + ' EC2_g HttpsSecurityGroups to update')
+    logger.info('Found ' + str(len(region_http_group)) + ' EC2_r HttpSecurityGroups to update')
+    logger.info('Found ' + str(len(region_https_group)) + ' EC2_r HttpsSecurityGroups to update')
 
     result = list()
     global_http_updated = 0
     global_https_updated = 0
     region_http_updated = 0
     region_https_updated = 0
-
+    split_amount = 59  # max ingress rules for sg (default 60)
+    update_range = split_ranges(new_ranges["GLOBAL"], split_amount)
     for group in global_http_group:
-        if update_security_group(client, group, new_ranges["GLOBAL"], INGRESS_PORTS['Http']):
+        if update_security_group(client, group, next(update_range,None), INGRESS_PORTS['Http']):
             global_http_updated += 1
             result.append('Updated ' + group['GroupId'])
+    update_range = split_ranges(new_ranges["GLOBAL"], split_amount)
     for group in global_https_group:
-        if update_security_group(client, group, new_ranges["GLOBAL"], INGRESS_PORTS['Https']):
+        if update_security_group(client, group, next(update_range, None), INGRESS_PORTS['Https']):
             global_https_updated += 1
             result.append('Updated ' + group['GroupId'])
+    update_range = split_ranges(new_ranges["REGION"], split_amount)
     for group in region_http_group:
-        if update_security_group(client, group, new_ranges["REGION"], INGRESS_PORTS['Http']):
+        if update_security_group(client, group, next(update_range, None), INGRESS_PORTS['Http']):
             region_http_updated += 1
             result.append('Updated ' + group['GroupId'])
+    update_range = split_ranges(new_ranges["REGION"], split_amount)
     for group in region_https_group:
-        if update_security_group(client, group, new_ranges["REGION"], INGRESS_PORTS['Https']):
+        if update_security_group(client, group, next(update_range, None), INGRESS_PORTS['Https']):
             region_https_updated += 1
             result.append('Updated ' + group['GroupId'])
 
-    result.append('Updated ' + str(global_http_updated) + ' of ' + str(len(global_http_group)) + ' CloudFront_g HttpSecurityGroups')
-    result.append('Updated ' + str(global_https_updated) + ' of ' + str(len(global_https_group)) + ' CloudFront_g HttpsSecurityGroups')
-    result.append('Updated ' + str(region_http_updated) + ' of ' + str(len(region_http_group)) + ' CloudFront_r HttpSecurityGroups')
-    result.append('Updated ' + str(region_https_updated) + ' of ' + str(len(region_https_group)) + ' CloudFront_r HttpsSecurityGroups')
+    result.append('Updated ' + str(global_http_updated) + ' of ' + str(len(global_http_group)) + ' EC2_g HttpSecurityGroups')
+    result.append('Updated ' + str(global_https_updated) + ' of ' + str(len(global_https_group)) + ' EC2_g HttpsSecurityGroups')
+    result.append('Updated ' + str(region_http_updated) + ' of ' + str(len(region_http_group)) + ' EC2_r HttpSecurityGroups')
+    result.append('Updated ' + str(region_https_updated) + ' of ' + str(len(region_https_group)) + ' EC2_r HttpsSecurityGroups')
 
     return result
 
